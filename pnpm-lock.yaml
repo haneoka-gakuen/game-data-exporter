@@ -1,0 +1,134 @@
+lockfileVersion: "9.0"
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+  .:
+    dependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+    devDependencies:
+      "@types/node":
+        specifier: 26.1.0
+        version: 26.1.0
+      "@yume-chan/adb":
+        specifier: 2.6.4
+        version: 2.6.4
+      "@yume-chan/adb-daemon-webusb":
+        specifier: 2.3.2
+        version: 2.3.2
+      prettier:
+        specifier: 3.9.4
+        version: 3.9.4
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+packages:
+  "@types/node@26.1.0":
+    resolution:
+      { integrity: sha512-O0A1G3xPGy4w7AgQdAQYUlQ+BKk2Oovw8eRpofyp5KdBZULnbe+WqaOVNrm705SHphCiG4XHsACrSmPu1f+Kgw== }
+
+  "@types/w3c-web-usb@1.0.14":
+    resolution:
+      { integrity: sha512-Qu3Nn6JFuF4+sHKYl+IcX9vYiI40ogleXzFFSxoE1W94rG98o/kXs8uJ0QSfFzuwBCZWlGfUGpPkgwuuX4PchA== }
+
+  "@yume-chan/adb-daemon-webusb@2.3.2":
+    resolution:
+      { integrity: sha512-5ANaqsRJWFc5kKMnGALjYCrSXo5eC4u51dvYppvuBCLVjv12n7he2TPy5yEZ3XtlToRFS0kWCQC0XS8M60lRSA== }
+
+  "@yume-chan/adb@2.6.4":
+    resolution:
+      { integrity: sha512-aaN21ZOLjWW1nC09C21f0yQkCqxkuMWMqheryGEbmGLPhuzIyOhTurJK8cXh5ZnQ+ptdKBexqvoG6zYoul9XPA== }
+
+  "@yume-chan/async@4.1.3":
+    resolution:
+      { integrity: sha512-0vzhNJMkWUPyjKzUK4rqHEeCU6YQtF78RsB1kFRB6Y2BLupmEQNxcSb0mjKabPL9jZpCCiLa5KL8oTOJClUVaw== }
+
+  "@yume-chan/event@2.0.0":
+    resolution:
+      { integrity: sha512-z56MDOcX1QlgLUCuA6th3r10negVb7A3gzY//TwSC9ZOvzuRlrAqXcxZf1T3hHfNMk/NFO9RIgQgegXYSfaqLw== }
+
+  "@yume-chan/no-data-view@2.0.0":
+    resolution:
+      { integrity: sha512-0GRJrrt6wtZlbiE92jocHOnaAvjQ+Y7xwwhwOPqLkwf90Kj1JIHJ5Zh4wJVQSQIkzfRSOpM+jeEQdC2K15snlA== }
+
+  "@yume-chan/stream-extra@2.6.1":
+    resolution:
+      { integrity: sha512-GQ+Q0SQf9p6Fl7ZK0UO5vHVGBJgkTJm/WXKurUMpjHQV4VUpjZ2hrQ744aCfT7WwSol7Bz/uEiXWmk240Hr/hg== }
+
+  "@yume-chan/struct@2.3.2":
+    resolution:
+      { integrity: sha512-afoCnSKV+5HRK7e4innVd9YTYDyNWdjA1CVQa1j8rWYnmr7HGZfdkHMQr+AESLk6GxWFMzOIPQIG6nYOTGMFIw== }
+
+  fflate@0.8.3:
+    resolution:
+      { integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA== }
+
+  prettier@3.9.4:
+    resolution:
+      { integrity: sha512-yWG/o/4oJfo036EKAfK6ACAoDOfHeRHx4tuxkfBZiauURiaSmYwlpOr5LQqKtIkRD2z1PLteme2WoxEnj4tHTg== }
+    engines: { node: ">=14" }
+    hasBin: true
+
+  typescript@6.0.3:
+    resolution:
+      { integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw== }
+    engines: { node: ">=14.17" }
+    hasBin: true
+
+  undici-types@8.3.0:
+    resolution:
+      { integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ== }
+
+snapshots:
+  "@types/node@26.1.0":
+    dependencies:
+      undici-types: 8.3.0
+
+  "@types/w3c-web-usb@1.0.14": {}
+
+  "@yume-chan/adb-daemon-webusb@2.3.2":
+    dependencies:
+      "@types/w3c-web-usb": 1.0.14
+      "@yume-chan/adb": 2.6.4
+      "@yume-chan/event": 2.0.0
+      "@yume-chan/stream-extra": 2.6.1
+      "@yume-chan/struct": 2.3.2
+
+  "@yume-chan/adb@2.6.4":
+    dependencies:
+      "@yume-chan/async": 4.1.3
+      "@yume-chan/event": 2.0.0
+      "@yume-chan/no-data-view": 2.0.0
+      "@yume-chan/stream-extra": 2.6.1
+      "@yume-chan/struct": 2.3.2
+
+  "@yume-chan/async@4.1.3": {}
+
+  "@yume-chan/event@2.0.0":
+    dependencies:
+      "@yume-chan/async": 4.1.3
+
+  "@yume-chan/no-data-view@2.0.0": {}
+
+  "@yume-chan/stream-extra@2.6.1":
+    dependencies:
+      "@yume-chan/async": 4.1.3
+      "@yume-chan/struct": 2.3.2
+
+  "@yume-chan/struct@2.3.2":
+    dependencies:
+      "@yume-chan/async": 4.1.3
+      "@yume-chan/no-data-view": 2.0.0
+
+  fflate@0.8.3: {}
+
+  prettier@3.9.4: {}
+
+  typescript@6.0.3: {}
+
+  undici-types@8.3.0: {}

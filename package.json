@@ -1,0 +1,80 @@
+{
+  "name": "@haneoka/game-data-exporter",
+  "version": "0.1.0",
+  "description": "Reads Our Notes card progress from save files or a phone and exports it for Haneoka's team builder",
+  "keywords": [
+    "our-notes",
+    "bang-dream",
+    "save",
+    "adb",
+    "exporter"
+  ],
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haneoka-gakuen/game-data-exporter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/haneoka-gakuen/game-data-exporter/issues"
+  },
+  "homepage": "https://github.com/haneoka-gakuen/game-data-exporter#readme",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "bin": {
+    "haneoka-export": "./dist/bin/haneoka-export.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./adb": {
+      "types": "./dist/src/device/adb.d.ts",
+      "import": "./dist/src/device/adb.js"
+    },
+    "./webusb": {
+      "types": "./dist/src/device/webusb.d.ts",
+      "import": "./dist/src/device/webusb.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && mkdir -p dist/src/vendor && cp src/vendor/*.js src/vendor/*.d.ts src/vendor/LICENSE dist/src/vendor/",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  },
+  "peerDependencies": {
+    "@yume-chan/adb": "^2.6.4",
+    "@yume-chan/adb-daemon-webusb": "^2.3.2"
+  },
+  "peerDependenciesMeta": {
+    "@yume-chan/adb": {
+      "optional": true
+    },
+    "@yume-chan/adb-daemon-webusb": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.1.0",
+    "@yume-chan/adb": "2.6.4",
+    "@yume-chan/adb-daemon-webusb": "2.3.2",
+    "prettier": "3.9.4",
+    "typescript": "6.0.3"
+  }
+}
