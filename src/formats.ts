@@ -129,13 +129,13 @@ export function zipEntries(data: Uint8Array): ZipEntry[] {
       path.startsWith("/") ||
       path.includes(":") ||
       /[\u0000-\u001f]/.test(path) ||
-      path.split("/").some((p) => p === ".." || p === ".") ||
-      names.has(path)
+      path.split("/").some((p) => p === ".." || p === ".")
     )
       throw new BoxImportError("box_invalid_zip_path");
-    names.add(path);
     offset += 46 + nameLen + extra + comment;
     if (path.endsWith("/")) continue;
+    if (names.has(path)) throw new BoxImportError("box_invalid_zip_path");
+    names.add(path);
     total += size;
     if (size > BOX_LIMITS.fileBytes || total > BOX_LIMITS.expandedBytes || (compressed === 0 && size !== 0))
       throw new BoxImportError("box_expanded_budget");
