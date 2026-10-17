@@ -1,0 +1,6 @@
+name: game_data_exporter
+description: Pure Dart projection of Our Notes inventory exports.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.13.5

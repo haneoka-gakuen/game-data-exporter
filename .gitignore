@@ -1,2 +1,4 @@
 node_modules/
 dist/
+dart/.dart_tool/
+dart/pubspec.lock
