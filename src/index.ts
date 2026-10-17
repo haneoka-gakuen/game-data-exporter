@@ -8,4 +8,12 @@ export {
   type DeviceEntry,
 } from "./device/reader.js";
 export { BoxImportError, BOX_LIMITS, integer, decimal } from "./types.js";
-export type { BoxCandidate, BoxMember, BoxSnapshot, BoxParseResult, BoxParseOptions } from "./types.js";
+export type {
+  BoxCandidate,
+  BoxCandidateNotice,
+  BoxPlayerScalars,
+  BoxMember,
+  BoxSnapshot,
+  BoxParseResult,
+  BoxParseOptions,
+} from "./types.js";

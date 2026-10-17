@@ -7,10 +7,12 @@ import { createAdbReader } from "../src/device/adb.js";
 
 const USAGE = `Usage:
   haneoka-export --adb [--package <id>] [-o <file>]
-  haneoka-export <save file>... [-o <file>]
+  haneoka-export <save file>... [--json] [-o <file>]
 
 Reads Our Notes card progress from a phone over ADB or from save files and
 writes an ONPKG1 package for the team builder's import dialog.
+Import OtoNote or MoeNotes profiles as their original JSON in Haneoka.
+Use --json to inspect parsed profile facts.
 
 Packages: ${ANDROID_CHANNELS.map((channel) => `${channel.packageId} (${channel.label})`).join(", ")}`;
 
@@ -60,6 +62,8 @@ try {
   if (values.output) await writeFile(values.output, `${output}\n`);
   else console.log(output);
 } catch (error) {
+  if (error instanceof BoxImportError && error.code === "box_profile_requires_json")
+    console.error("Import the original profile JSON in Haneoka; use --json to inspect its parsed facts.");
   console.error(error instanceof BoxImportError ? error.code : error instanceof Error ? error.message : String(error));
   process.exit(1);
 }

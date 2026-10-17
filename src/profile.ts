@@ -1,4 +1,5 @@
 import { BOX_LIMITS, BoxImportError, object, integer, type BoxCandidate } from "./types.js";
+import { projectThirdPartyInventory } from "./third-party-inventory.js";
 const id = (v: unknown) => {
   const n = integer(v);
   return n !== null && n > 0 && n <= 0x7fffffff ? n : null;
@@ -21,6 +22,8 @@ const countToNative = (v: unknown) => {
 };
 /** Explicit supported document schemas only; never follows account/auth envelopes or arbitrary profile APIs. */
 export function projectInventoryDocument(root: Record<string, unknown>): BoxCandidate | null {
+  const thirdParty = projectThirdPartyInventory(root);
+  if (thirdParty) return thirdParty;
   const legacy = object(root.profile) || root,
     inventory = object(legacy.inventory);
   const canonical = root.schema === "haneoka-team-inventory-v1" || root.schema === "haneoka-team-inventory-v2";

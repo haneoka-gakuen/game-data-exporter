@@ -32,6 +32,8 @@ npx @haneoka/game-data-exporter save.dat backup.zip -o box.txt
 
 Each player found becomes one line of the output. `--json` prints the parsed result instead of packages.
 
+OtoNote personal-growth and MoeNotes card-box JSON files can be imported directly in Haneoka. Their confirmed growth values enter the existing review; unresolved fields remain notices. A MoeNotes box linked to a game save requires that save. Use the original profile JSON for import and `--json` to inspect its parsed facts.
+
 Then open the team builder, choose **Import** and paste the contents of `box.txt`.
 
 ## As a library

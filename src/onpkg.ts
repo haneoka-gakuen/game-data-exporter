@@ -1,5 +1,5 @@
 import { gzipSync } from "fflate";
-import type { BoxCandidate } from "./types.js";
+import { BoxImportError, type BoxCandidate } from "./types.js";
 
 /**
  * The compact package every Haneoka importer reads: card, character and band
@@ -15,6 +15,8 @@ export interface CompactPackage {
 }
 
 export function compactPackage(candidate: BoxCandidate): CompactPackage {
+  if (candidate.format === "inventory-json" || candidate.format === "reference-profile")
+    throw new BoxImportError("box_profile_requires_json");
   return {
     v: 1,
     m: candidate.members.map((row) => [

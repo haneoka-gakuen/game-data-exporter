@@ -15,6 +15,13 @@ export interface BoxSnapshot {
   level?: number | null;
   rank: number | null;
 }
+export interface BoxPlayerScalars {
+  vipRank?: number | null;
+}
+export interface BoxCandidateNotice {
+  code: "unknown" | "conflict" | "needs_review" | "unsupported_summary" | "unsupported_field" | "inactive_band_item";
+  path: string;
+}
 export interface BoxCandidate {
   id: string;
   format: "player-json" | "onpkg1" | "encrypted-player" | "reference-profile" | "inventory-json";
@@ -22,6 +29,8 @@ export interface BoxCandidate {
   snapshots: BoxSnapshot[];
   characters: { id: number; exp: string | null; rank?: number | null }[];
   bandItems: { id: number; level: number | null }[];
+  playerScalars?: BoxPlayerScalars;
+  notices?: BoxCandidateNotice[];
   /** Caller still confirms binding to current settings; a declared foreign server is rejected. */
   declaredIdentity?: { server: string; releaseId?: string };
 }
