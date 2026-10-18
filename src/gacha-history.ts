@@ -34,6 +34,7 @@ function amount(value: unknown, maximum = 2147483647): number | null {
 }
 function id(value: unknown, nullable = false): string | null {
   if (value == null && nullable) return null;
+  if (typeof value === "number" && !Number.isSafeInteger(value)) throw new Error("history_import_invalid");
   const text = String(value);
   if (!/^[1-9][0-9]{0,18}$/u.test(text) || BigInt(text) > 9223372036854775807n)
     throw new Error("history_import_invalid");

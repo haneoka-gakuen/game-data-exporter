@@ -28,7 +28,7 @@ Both JSON readers explicitly project the fields below. The portable output conta
 }
 ```
 
-Each batch has nullable `poolId`, `productId`, `executedAt`, `freeGems`, `paidGems` and `tickets`, plus a nonempty `prizes` array. A prize has a decimal-string `prizeId` and boolean `converted`. IDs are positive signed-64-bit decimal strings. Amounts are nonnegative integers through 2,147,483,647; `executedAt` is Unix seconds through 253,402,271,999. Missing values stay `null`.
+Each batch has nullable `poolId`, `productId`, `executedAt`, `freeGems`, `paidGems` and `tickets`, plus a nonempty `prizes` array. A prize has a decimal-string `prizeId` and boolean `converted`. IDs are positive signed-64-bit decimal strings. JSON numeric IDs support Otonote safe-integer compatibility through 9,007,199,254,740,991; use decimal strings for the full signed-64-bit range. Amounts are nonnegative integers through 2,147,483,647; `executedAt` is Unix seconds through 253,402,271,999. Missing values stay `null`.
 
 `source.server` is `jp`, `global-hmt`, `global-en` or `global-kr`. Coverage scope is `server-returned`, `local-collected` or `selected-records`. `historyKind` is `execution`, `legacy` or `empty` for native server reads. JSON imports retain their history-kind label. The readers also accept the existing `otonote-gacha-history` format at schema version 1, project its `source.serverId` and coverage aliases, and return the shared contract.
 

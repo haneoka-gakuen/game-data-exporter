@@ -171,14 +171,17 @@ class HistorySnapshot {
           throw const FormatException('history_prize');
         }
         prizes.add(
-          HistoryPrize(_decimal(prize['prizeId'])!, prize['converted'] as bool),
+          HistoryPrize(
+            _identifier(prize['prizeId'])!,
+            prize['converted'] as bool,
+          ),
         );
       }
       if (prizes.isEmpty) throw const FormatException('history_batch');
       executions.add(
         HistoryExecution(
-          poolId: _decimal(row['poolId'], nullable: true),
-          productId: _decimal(row['productId'], nullable: true),
+          poolId: _identifier(row['poolId'], nullable: true),
+          productId: _identifier(row['productId'], nullable: true),
           executedAt: _amount(row['executedAt'], maximum: 253402271999),
           freeGems: _amount(row['freeGems']),
           paidGems: _amount(row['paidGems']),
@@ -212,6 +215,18 @@ class HistorySnapshot {
           : 'server-returned',
     );
   }
+}
+
+String? _identifier(Object? value, {bool nullable = false}) {
+  if (value is num) {
+    if (!value.isFinite ||
+        value != value.truncateToDouble() ||
+        value > 9007199254740991) {
+      throw const FormatException('history_id');
+    }
+    value = value.toInt();
+  }
+  return _decimal(value, nullable: nullable);
 }
 
 String? _decimal(Object? value, {bool nullable = false}) {
