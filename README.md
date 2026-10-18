@@ -2,7 +2,7 @@
 
 Reads your Our Notes card progress — member cards, snapshots, character ranks and band items — from the game's save files or straight from your phone, and writes it as an `ONPKG1` package that [Haneoka's team builder](https://haneoka.org/en/team-builder/) imports.
 
-It reads only; it never logs in, calls a game server or writes to the device. Your player name, account ID and any tokens in the save are dropped before anything is written: the package carries card, character and band item IDs with their experience, levels and ranks, nothing else.
+The card-progress exporter reads local files and the device. Your player name, account ID and any tokens in the save are dropped before the inventory package is written: it carries card, character and band item IDs with their experience, levels and ranks.
 
 ## From a phone
 
@@ -51,6 +51,19 @@ const text = encodeOnpkg(candidates[0]);
 - `@haneoka/game-data-exporter/webusb` — WebUSB in Chromium browsers, through [Tango](https://github.com/yume-chan/ya-webadb). Install `@yume-chan/adb` and `@yume-chan/adb-daemon-webusb` alongside it.
 
 Reads are bounded: 32 MiB of input, 16 MiB per file, 64 MiB after decompression, 512 entries and 16 players. Anything larger is refused with an error code rather than read partially.
+
+## Gacha history
+
+The Dart package reads gacha history from the selected game server using the session in one original encrypted or decrypted `LocalPersistData` save. A player-profile file is optional. From the `dart` directory, with Dart 3.13.5 or later:
+
+```sh
+dart pub get
+dart run game_data_exporter:gacha_history --server global-hmt --output history.json /path/to/persist-save
+```
+
+Choose `jp`, `global-hmt`, `global-en` or `global-kr`. This command contacts the game server, discovers its recommended client version and requests history. It writes the credential-free `haneoka-gacha-history-v1` snapshot used by the Web importer. Session fields stay in memory; errors print short codes. Server retention and ordering within a batch remain unspecified.
+
+Portable JSON types, parsing and multiset merging are shared through `@haneoka/game-data-exporter/gacha-history` and `package:game_data_exporter/gacha_history.dart`. See the [shared history contract](docs/gacha-history.md) and [Dart API](dart/README.md).
 
 ## The package format
 

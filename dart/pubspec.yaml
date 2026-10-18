@@ -1,6 +1,11 @@
 name: game_data_exporter
-description: Pure Dart projection of Our Notes inventory exports.
+description: Our Notes inventory projection, save decoding and gacha history export.
 version: 0.1.0
 publish_to: none
 environment:
   sdk: ^3.13.5
+dependencies:
+  grpc: ^5.1.0
+  protobuf: ^6.1.0
+executables:
+  gacha_history: gacha_history

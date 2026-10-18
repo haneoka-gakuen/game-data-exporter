@@ -38,6 +38,10 @@
       "types": "./dist/src/device/webusb.d.ts",
       "import": "./dist/src/device/webusb.js"
     },
+    "./gacha-history": {
+      "types": "./dist/src/gacha-history.d.ts",
+      "import": "./dist/src/gacha-history.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
