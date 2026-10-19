@@ -6,6 +6,13 @@ import 'package:protobuf/protobuf.dart';
 const historySnapshotSchema = 'haneoka-gacha-history-v1';
 const historyResponseLimit = 16 * 1024 * 1024;
 
+int historyOffsetMinutes(String server) => switch (server) {
+  'jp' || 'global-kr' => 540,
+  'global-hmt' => 480,
+  'global-en' => 0,
+  _ => throw const FormatException('history_server'),
+};
+
 class HistoryPrize {
   const HistoryPrize(this.prizeId, this.converted);
   final String prizeId;
@@ -46,15 +53,39 @@ class HistorySnapshot {
     required this.executions,
     this.legacyOmittedCount = 0,
     this.scope = 'server-returned',
+    this.accountKey,
   });
   final String server, clientVersion, historyKind;
   final DateTime queriedAt;
   final List<HistoryExecution> executions;
   final int legacyOmittedCount;
   final String scope;
+  final String? accountKey;
+
+  HistorySnapshot forAccount(String key) {
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(key) ||
+        (accountKey != null && accountKey != key)) {
+      throw const FormatException('history_account');
+    }
+    return HistorySnapshot(
+      server: server,
+      clientVersion: clientVersion,
+      queriedAt: queriedAt,
+      historyKind: historyKind,
+      executions: executions,
+      legacyOmittedCount: legacyOmittedCount,
+      scope: scope,
+      accountKey: key,
+    );
+  }
 
   HistorySnapshot withOlder(HistorySnapshot older) {
     if (older.server != server) return this;
+    if (accountKey != null &&
+        older.accountKey != null &&
+        accountKey != older.accountKey) {
+      throw const FormatException('history_account');
+    }
     if (executions.isEmpty && older.executions.isNotEmpty) {
       return HistorySnapshot(
         server: server,
@@ -64,6 +95,7 @@ class HistorySnapshot {
         executions: older.executions,
         legacyOmittedCount: older.legacyOmittedCount,
         scope: 'local-collected',
+        accountKey: accountKey ?? older.accountKey,
       );
     }
     if (older.historyKind != historyKind) return this;
@@ -105,6 +137,7 @@ class HistorySnapshot {
       executions: List.unmodifiable(combined),
       legacyOmittedCount: legacyOmittedCount,
       scope: combined.length > executions.length ? 'local-collected' : scope,
+      accountKey: accountKey ?? older.accountKey,
     );
   }
 
@@ -119,11 +152,16 @@ class HistorySnapshot {
     ],
     legacyOmittedCount: legacyOmittedCount,
     scope: 'selected-records',
+    accountKey: accountKey,
   );
 
   Map<String, Object?> toJson() => {
     'schema': historySnapshotSchema,
-    'source': {'server': server, 'clientVersion': clientVersion},
+    'source': {
+      'server': server,
+      'clientVersion': clientVersion,
+      if (accountKey != null) 'accountKey': accountKey,
+    },
     'queriedAt': queriedAt.toUtc().toIso8601String(),
     'historyKind': historyKind,
     'legacyOmittedCount': legacyOmittedCount,
@@ -159,6 +197,12 @@ class HistorySnapshot {
     }
     final date = DateTime.tryParse('${value['queriedAt'] ?? ''}');
     if (date == null) throw const FormatException('history_date');
+    final accountKey = source['accountKey'];
+    if (accountKey != null &&
+        (accountKey is! String ||
+            !RegExp(r'^[a-f0-9]{64}$').hasMatch(accountKey))) {
+      throw const FormatException('history_account');
+    }
     var count = 0;
     final executions = <HistoryExecution>[];
     for (final row in rows) {
@@ -195,6 +239,7 @@ class HistorySnapshot {
       server: server,
       clientVersion: '${source['clientVersion'] ?? ''}',
       queriedAt: date,
+      accountKey: accountKey as String?,
       historyKind:
           '${value['historyKind'] ?? (coverage is Map ? coverage['historyKind'] : null) ?? 'execution'}',
       legacyOmittedCount:
@@ -215,6 +260,54 @@ class HistorySnapshot {
           : 'server-returned',
     );
   }
+}
+
+List<HistorySnapshot> mergeHistoryCollection(
+  Iterable<HistorySnapshot> stored,
+  HistorySnapshot incoming,
+) {
+  for (final history in stored) {
+    if (history.server != incoming.server ||
+        (history.accountKey != null &&
+            incoming.accountKey != null &&
+            history.accountKey != incoming.accountKey)) {
+      throw const FormatException('history_account');
+    }
+  }
+  if (incoming.executions.isEmpty &&
+      stored.any((history) => history.executions.isNotEmpty)) {
+    return List.unmodifiable(
+      stored.map(
+        (history) => incoming.queriedAt.isBefore(history.queriedAt)
+            ? history
+            : incoming.withOlder(history),
+      ),
+    );
+  }
+  final previous = stored
+      .where((history) => history.historyKind == incoming.historyKind)
+      .firstOrNull;
+  final history = previous == null
+      ? incoming
+      : incoming.queriedAt.isBefore(previous.queriedAt)
+      ? previous.withOlder(incoming)
+      : incoming.withOlder(previous);
+  final result =
+      [
+        ...stored.where(
+          (row) =>
+              row.historyKind != incoming.historyKind &&
+              row.historyKind != 'empty',
+        ),
+        history,
+      ]..sort(
+        (a, b) => a.historyKind == 'execution'
+            ? -1
+            : b.historyKind == 'execution'
+            ? 1
+            : b.queriedAt.compareTo(a.queriedAt),
+      );
+  return List.unmodifiable(result);
 }
 
 String? _identifier(Object? value, {bool nullable = false}) {

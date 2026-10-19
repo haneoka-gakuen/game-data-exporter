@@ -42,6 +42,10 @@
       "types": "./dist/src/gacha-history.d.ts",
       "import": "./dist/src/gacha-history.js"
     },
+    "./gacha-history-analysis": {
+      "types": "./dist/src/gacha-history-analysis.d.ts",
+      "import": "./dist/src/gacha-history-analysis.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -8,6 +8,7 @@ export {
   type DeviceEntry,
 } from "./device/reader.js";
 export { BoxImportError, BOX_LIMITS, integer, decimal } from "./types.js";
+export * from "./gacha-history-analysis.js";
 export type {
   BoxCandidate,
   BoxCandidateNotice,

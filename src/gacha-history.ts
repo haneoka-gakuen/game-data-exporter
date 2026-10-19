@@ -2,6 +2,8 @@ export const HISTORY_SCHEMA = "haneoka-gacha-history-v1";
 export const HISTORY_BYTES = 16 * 1024 * 1024;
 export const HISTORY_REGIONS = ["jp", "global-hmt", "global-en", "global-kr"] as const;
 export type HistoryRegion = (typeof HISTORY_REGIONS)[number];
+export const historyOffsetMinutes = (server: HistoryRegion): number =>
+  ({ jp: 540, "global-hmt": 480, "global-en": 0, "global-kr": 540 })[server];
 export interface HistoryPrize {
   prizeId: string;
   converted: boolean;
@@ -17,7 +19,7 @@ export interface HistoryExecution {
 }
 export interface HistorySnapshot {
   schema: typeof HISTORY_SCHEMA;
-  source: { server: HistoryRegion; clientVersion: string };
+  source: { server: HistoryRegion; clientVersion: string; accountKey?: string };
   queriedAt: string;
   historyKind: string;
   legacyOmittedCount: number;
@@ -56,6 +58,11 @@ export function parseHistory(value: unknown): HistorySnapshot {
     throw new Error("history_import_invalid");
   if (typeof root.queriedAt !== "string" || !Number.isFinite(Date.parse(root.queriedAt)))
     throw new Error("history_import_invalid");
+  if (
+    source.accountKey != null &&
+    (typeof source.accountKey !== "string" || !/^[a-f0-9]{64}$/u.test(source.accountKey))
+  )
+    throw new Error("history_import_invalid");
   let count = 0;
   const batches = root.batches.map((value): HistoryExecution => {
     const row = historyObject(value);
@@ -76,7 +83,11 @@ export function parseHistory(value: unknown): HistorySnapshot {
   });
   return {
     schema: HISTORY_SCHEMA,
-    source: { server: server as HistoryRegion, clientVersion: String(source.clientVersion ?? "").slice(0, 32) },
+    source: {
+      server: server as HistoryRegion,
+      clientVersion: String(source.clientVersion ?? "").slice(0, 32),
+      ...(typeof source.accountKey === "string" ? { accountKey: source.accountKey } : {}),
+    },
     queriedAt: new Date(root.queriedAt).toISOString(),
     historyKind: String(root.historyKind ?? coverage.historyKind ?? "execution").slice(0, 32),
     legacyOmittedCount: amount(root.legacyOmittedCount ?? coverage.legacyOmittedCount) ?? 0,
@@ -94,6 +105,10 @@ export function parseHistory(value: unknown): HistorySnapshot {
 /** Union snapshots of one known account, preserving repeated identical draws. */
 export function mergeHistory(newer: HistorySnapshot, older: HistorySnapshot): HistorySnapshot {
   if (newer.source.server !== older.source.server) throw new Error("history_import_invalid");
+  if (newer.source.accountKey && older.source.accountKey && newer.source.accountKey !== older.source.accountKey)
+    throw new Error("history_import_invalid");
+  if (!newer.source.accountKey && older.source.accountKey)
+    newer = { ...newer, source: { ...newer.source, accountKey: older.source.accountKey } };
   if (!newer.batches.length && older.batches.length)
     return {
       ...newer,
@@ -124,4 +139,40 @@ export function mergeHistory(newer: HistorySnapshot, older: HistorySnapshot): Hi
   return batches.length === newer.batches.length
     ? newer
     : { ...newer, batches, coverage: { ...newer.coverage, scope: "local-collected" } };
+}
+
+export function mergeHistoryCollection(
+  stored: readonly HistorySnapshot[],
+  incoming: HistorySnapshot,
+): HistorySnapshot[] {
+  for (const history of stored) {
+    if (
+      history.source.server !== incoming.source.server ||
+      (history.source.accountKey &&
+        incoming.source.accountKey &&
+        history.source.accountKey !== incoming.source.accountKey)
+    )
+      throw new Error("history_import_invalid");
+  }
+  if (!incoming.batches.length && stored.some((history) => history.batches.length)) {
+    return stored.map((history) =>
+      Date.parse(incoming.queriedAt) >= Date.parse(history.queriedAt) ? mergeHistory(incoming, history) : history,
+    );
+  }
+  const previous = stored.find((history) => history.historyKind === incoming.historyKind);
+  const history = previous
+    ? Date.parse(incoming.queriedAt) >= Date.parse(previous.queriedAt)
+      ? mergeHistory(incoming, previous)
+      : mergeHistory(previous, incoming)
+    : incoming;
+  return [
+    ...stored.filter((row) => row.historyKind !== incoming.historyKind && row.historyKind !== "empty"),
+    history,
+  ].sort((a, b) =>
+    a.historyKind === "execution"
+      ? -1
+      : b.historyKind === "execution"
+        ? 1
+        : Date.parse(b.queriedAt) - Date.parse(a.queriedAt),
+  );
 }

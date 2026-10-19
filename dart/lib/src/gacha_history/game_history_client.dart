@@ -14,6 +14,7 @@ enum GameHistoryRegion {
 
   const GameHistoryRegion(this.id, this.host, this.catalogServer);
   final String id, host, catalogServer;
+  int get offsetMinutes => historyOffsetMinutes(id);
 }
 
 class SavedGameSession {

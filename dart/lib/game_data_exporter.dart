@@ -1,6 +1,8 @@
 /// Current inventory facts from Otonote and MoeNotes exports.
 library;
 
+export 'gacha_history_analysis.dart';
+
 part 'src/inventory.dart';
 part 'src/third_party_inventory.dart';
 
