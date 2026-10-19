@@ -23,6 +23,7 @@ export interface HistorySnapshot {
   queriedAt: string;
   historyKind: string;
   legacyOmittedCount: number;
+  accountState?: HistoryAccountState;
   coverage: { scope: string; retentionDays: null; orderWithinBatch: null };
   batches: HistoryExecution[];
 }
@@ -91,6 +92,9 @@ export function parseHistory(value: unknown): HistorySnapshot {
     queriedAt: new Date(root.queriedAt).toISOString(),
     historyKind: String(root.historyKind ?? coverage.historyKind ?? "execution").slice(0, 32),
     legacyOmittedCount: amount(root.legacyOmittedCount ?? coverage.legacyOmittedCount) ?? 0,
+    ...(root.accountState == null
+      ? {}
+      : { accountState: parseHistoryAccountState(root.accountState, server as HistoryRegion) }),
     coverage: {
       scope: ["server-returned", "local-collected", "selected-records"].includes(String(coverage.scope))
         ? String(coverage.scope)
@@ -109,6 +113,8 @@ export function mergeHistory(newer: HistorySnapshot, older: HistorySnapshot): Hi
     throw new Error("history_import_invalid");
   if (!newer.source.accountKey && older.source.accountKey)
     newer = { ...newer, source: { ...newer.source, accountKey: older.source.accountKey } };
+  const accountState = latestHistoryAccountState(newer.accountState, older.accountState);
+  if (accountState) newer = { ...newer, accountState };
   if (!newer.batches.length && older.batches.length)
     return {
       ...newer,
@@ -154,9 +160,16 @@ export function mergeHistoryCollection(
     )
       throw new Error("history_import_invalid");
   }
+  const accountState = stored.reduce(
+    (state, history) => latestHistoryAccountState(state, history.accountState),
+    incoming.accountState,
+  );
+  const withState = (history: HistorySnapshot) => (accountState ? { ...history, accountState } : history);
   if (!incoming.batches.length && stored.some((history) => history.batches.length)) {
     return stored.map((history) =>
-      Date.parse(incoming.queriedAt) >= Date.parse(history.queriedAt) ? mergeHistory(incoming, history) : history,
+      withState(
+        Date.parse(incoming.queriedAt) >= Date.parse(history.queriedAt) ? mergeHistory(incoming, history) : history,
+      ),
     );
   }
   const previous = stored.find((history) => history.historyKind === incoming.historyKind);
@@ -165,14 +178,18 @@ export function mergeHistoryCollection(
       ? mergeHistory(incoming, previous)
       : mergeHistory(previous, incoming)
     : incoming;
-  return [
-    ...stored.filter((row) => row.historyKind !== incoming.historyKind && row.historyKind !== "empty"),
-    history,
-  ].sort((a, b) =>
-    a.historyKind === "execution"
-      ? -1
-      : b.historyKind === "execution"
-        ? 1
-        : Date.parse(b.queriedAt) - Date.parse(a.queriedAt),
-  );
+  return [...stored.filter((row) => row.historyKind !== incoming.historyKind && row.historyKind !== "empty"), history]
+    .map(withState)
+    .sort((a, b) =>
+      a.historyKind === "execution"
+        ? -1
+        : b.historyKind === "execution"
+          ? 1
+          : Date.parse(b.queriedAt) - Date.parse(a.queriedAt),
+    );
+}
+import { parseHistoryAccountState, type HistoryAccountState } from "./gacha-history-points.js";
+
+function latestHistoryAccountState(a?: HistoryAccountState, b?: HistoryAccountState): HistoryAccountState | undefined {
+  return !a ? b : !b || Date.parse(a.collectedAt) >= Date.parse(b.collectedAt) ? a : b;
 }

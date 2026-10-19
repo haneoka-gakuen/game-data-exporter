@@ -2,6 +2,7 @@
 library;
 
 export 'gacha_history_analysis.dart';
+export 'gacha_history_points.dart';
 
 part 'src/inventory.dart';
 part 'src/third_party_inventory.dart';

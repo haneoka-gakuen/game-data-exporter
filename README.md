@@ -65,6 +65,8 @@ Choose `jp`, `global-hmt`, `global-en` or `global-kr`. This command contacts the
 
 Portable JSON types, parsing and multiset merging are shared through `@haneoka/game-data-exporter/gacha-history` and `package:game_data_exporter/gacha_history.dart`. See the [shared history contract](docs/gacha-history.md) and [Dart API](dart/README.md).
 
+`gacha-history-analysis` provides counts, rarity and UP distributions, product-specific expectations, costs and unordered draw intervals. `gacha-history-points` projects saved balances and redemption counters and joins them to the published exchange rules. Both modules have TypeScript and Dart entry points and work without a renderer. A host can include this credential-free account state in a portable snapshot.
+
 ## The package format
 
 `ONPKG1:` followed by base64 of gzip-compressed JSON:

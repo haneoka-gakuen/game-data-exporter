@@ -9,6 +9,7 @@ export {
 } from "./device/reader.js";
 export { BoxImportError, BOX_LIMITS, integer, decimal } from "./types.js";
 export * from "./gacha-history-analysis.js";
+export * from "./gacha-history-points.js";
 export type {
   BoxCandidate,
   BoxCandidateNotice,

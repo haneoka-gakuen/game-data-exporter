@@ -7,10 +7,14 @@
 | Public import             | `@haneoka/game-data-exporter/gacha-history` | `package:game_data_exporter/gacha_history.dart` |
 | Parse and project JSON    | `parseHistory(value)`                       | `HistorySnapshot.fromJson(value)`               |
 | Merge collected snapshots | `mergeHistory(newer, older)`                | `newer.withOlder(older)`                        |
+| Preserve history kinds    | `mergeHistoryCollection(stored, incoming)`  | `mergeHistoryCollection(stored, incoming)`       |
+| Region date offset        | `historyOffsetMinutes(server)`              | `historyOffsetMinutes(server)`                  |
 | Export selected batches   | Host selects `batches`                      | `snapshot.selected(indexes)`                    |
 | Serialize                 | `JSON.stringify(snapshot)`                  | `jsonEncode(snapshot.toJson())`                 |
 
 Both JSON readers explicitly project the fields below. The portable output contains no player ID, credential, device ID, save document or catalog asset URL. Catalog lookup, localization, card images, account association and persistence belong to the host.
+
+Hosts can attach a lowercase 64-character hexadecimal `source.accountKey` fingerprint. Merge rejects conflicting fingerprints. `accountState` optionally carries the whitelist defined by `haneoka-gacha-account-state-v1`: capture time, regional gacha-point balances and exchange counters. Merging uses the latest captured state independently of the draw-query time.
 
 ```json
 {
@@ -36,6 +40,14 @@ Imports accept at most 100,000 batches and 250,000 prizes. File readers enforce 
 
 Merge snapshots after the host has established that they belong to one account. A batch identity includes its pool, product, timestamp, costs and sorted prize multiset. Merging preserves the greatest multiplicity seen for each identical batch, so repeated identical draws survive without double-counting overlap. Newer empty responses retain older collected records. Different history kinds remain separate. TypeScript rejects different servers; Dart returns the newer snapshot unchanged for that case.
 
+Use `mergeHistoryCollection` to retain each kind as a separate snapshot. Date grouping uses JP/KR UTC+9, HMT UTC+8 and EN UTC.
+
+## Shared analysis and exchange progress
+
+`gacha-history-analysis` exports `analyzeGachaHistory`, `gachaHistoryExpectation`, `gachaHistoryProgress`, `gachaHistoryDay` and `summarizeGachaHistoryMoney` in both languages. Each prize represents one draw; its resource quantity is counted separately. Expectations use the executed product's normal and guaranteed draws. Position, gap and trailing-miss metrics preserve ranges for unordered batches. Free and paid gem unit prices remain independent.
+
+`gacha-history-points` exports `projectHistoryAccountState`, `parseHistoryAccountState` and `gachaTargetProgress`. The projection reads only `_gachaRecords` balances and `_exchange` counters. Progress uses the target's published point price and the selected product's point gain; available draw history does not stand in for a saved balance. Missing balances and counters stay null. Lifetime redemption totals require matching NoReset counters; periodic counters retain their reset scope. Stepped prices remain uncomputed until their rule is supported.
+
 The current server response supplies execution batches and an older per-prize history. When execution batches exist, native decoding exports them and records the omitted older count. When only the older list exists, each entry becomes a batch with unavailable pool, product and costs set to `null`. Empty responses produce an empty snapshot. Retention duration and order within a batch remain unspecified.
 
 ## Native CLI and session lifecycle
@@ -49,3 +61,5 @@ The Dart CLI decodes one encrypted or decrypted persist document with `SaveCodec
 JP public version discovery calls `app.announcement.AnnouncementService/GetList` with `x-platform` set to `iOS` on iOS and `Android` on other native platforms. Global discovery calls `app.masterdata.MasterdataService/Version`. Authenticated history uses `app.gacha.GachaService/History`. Recommended versions are cached per region and rediscovered once after a client-update response. Native Dart transport and live session acceptance require real-server validation for the selected region.
 
 The output writes only `HistorySnapshot.toJson()`. Errors expose short codes. The CLI clears input byte buffers after decoding, and the encrypted-save decoder clears its decrypted byte buffer. Session strings remain in process memory until the process exits.
+
+Authentication rejection maps to `history_session_expired`; that code includes changed, revoked or region-mismatched credentials. The game refreshes certification through its SDK login. A persist document supplies the saved certification; exact regional network selection is stored separately in Unity PlayerPrefs.

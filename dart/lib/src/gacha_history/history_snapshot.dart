@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:protobuf/protobuf.dart';
 
+import '../../gacha_history_points.dart';
+
 const historySnapshotSchema = 'haneoka-gacha-history-v1';
 const historyResponseLimit = 16 * 1024 * 1024;
 
@@ -54,6 +56,7 @@ class HistorySnapshot {
     this.legacyOmittedCount = 0,
     this.scope = 'server-returned',
     this.accountKey,
+    this.accountState,
   });
   final String server, clientVersion, historyKind;
   final DateTime queriedAt;
@@ -61,6 +64,22 @@ class HistorySnapshot {
   final int legacyOmittedCount;
   final String scope;
   final String? accountKey;
+  final HistoryAccountState? accountState;
+
+  HistorySnapshot withAccountState(HistoryAccountState? state) =>
+      HistorySnapshot(
+        server: server,
+        clientVersion: clientVersion,
+        queriedAt: queriedAt,
+        historyKind: historyKind,
+        executions: executions,
+        legacyOmittedCount: legacyOmittedCount,
+        scope: scope,
+        accountKey: accountKey,
+        accountState: state == null
+            ? null
+            : parseHistoryAccountState(state, expectedServer: server),
+      );
 
   HistorySnapshot forAccount(String key) {
     if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(key) ||
@@ -76,6 +95,7 @@ class HistorySnapshot {
       legacyOmittedCount: legacyOmittedCount,
       scope: scope,
       accountKey: key,
+      accountState: accountState,
     );
   }
 
@@ -86,6 +106,7 @@ class HistorySnapshot {
         accountKey != older.accountKey) {
       throw const FormatException('history_account');
     }
+    final state = _latestAccountState(accountState, older.accountState);
     if (executions.isEmpty && older.executions.isNotEmpty) {
       return HistorySnapshot(
         server: server,
@@ -96,9 +117,10 @@ class HistorySnapshot {
         legacyOmittedCount: older.legacyOmittedCount,
         scope: 'local-collected',
         accountKey: accountKey ?? older.accountKey,
+        accountState: state,
       );
     }
-    if (older.historyKind != historyKind) return this;
+    if (older.historyKind != historyKind) return withAccountState(state);
     String identity(HistoryExecution row) {
       final prizes =
           row.prizes
@@ -138,6 +160,7 @@ class HistorySnapshot {
       legacyOmittedCount: legacyOmittedCount,
       scope: combined.length > executions.length ? 'local-collected' : scope,
       accountKey: accountKey ?? older.accountKey,
+      accountState: state,
     );
   }
 
@@ -153,6 +176,7 @@ class HistorySnapshot {
     legacyOmittedCount: legacyOmittedCount,
     scope: 'selected-records',
     accountKey: accountKey,
+    accountState: accountState,
   );
 
   Map<String, Object?> toJson() => {
@@ -165,6 +189,11 @@ class HistorySnapshot {
     'queriedAt': queriedAt.toUtc().toIso8601String(),
     'historyKind': historyKind,
     'legacyOmittedCount': legacyOmittedCount,
+    if (accountState != null)
+      'accountState': parseHistoryAccountState(
+        accountState,
+        expectedServer: server,
+      ),
     'coverage': {
       'scope': scope,
       'retentionDays': null,
@@ -240,6 +269,12 @@ class HistorySnapshot {
       clientVersion: '${source['clientVersion'] ?? ''}',
       queriedAt: date,
       accountKey: accountKey as String?,
+      accountState: value['accountState'] == null
+          ? null
+          : parseHistoryAccountState(
+              value['accountState'],
+              expectedServer: server,
+            ),
       historyKind:
           '${value['historyKind'] ?? (coverage is Map ? coverage['historyKind'] : null) ?? 'execution'}',
       legacyOmittedCount:
@@ -274,14 +309,23 @@ List<HistorySnapshot> mergeHistoryCollection(
       throw const FormatException('history_account');
     }
   }
+  final state = stored.fold<HistoryAccountState?>(
+    incoming.accountState,
+    (state, history) => _latestAccountState(state, history.accountState),
+  );
   if (incoming.executions.isEmpty &&
       stored.any((history) => history.executions.isNotEmpty)) {
     return List.unmodifiable(
-      stored.map(
-        (history) => incoming.queriedAt.isBefore(history.queriedAt)
-            ? history
-            : incoming.withOlder(history),
-      ),
+      stored
+          .map(
+            (history) => incoming.queriedAt.isBefore(history.queriedAt)
+                ? history
+                : incoming.withOlder(history),
+          )
+          .map(
+            (history) =>
+                state == null ? history : history.withAccountState(state),
+          ),
     );
   }
   final previous = stored
@@ -307,7 +351,23 @@ List<HistorySnapshot> mergeHistoryCollection(
             ? 1
             : b.queriedAt.compareTo(a.queriedAt),
       );
-  return List.unmodifiable(result);
+  return List.unmodifiable(
+    result.map(
+      (history) => state == null ? history : history.withAccountState(state),
+    ),
+  );
+}
+
+HistoryAccountState? _latestAccountState(
+  HistoryAccountState? a,
+  HistoryAccountState? b,
+) {
+  if (a == null) return b;
+  if (b == null) return a;
+  return DateTime.parse(a['collectedAt'] as String).millisecondsSinceEpoch >=
+          DateTime.parse(b['collectedAt'] as String).millisecondsSinceEpoch
+      ? a
+      : b;
 }
 
 String? _identifier(Object? value, {bool nullable = false}) {
