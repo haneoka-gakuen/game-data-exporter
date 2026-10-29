@@ -813,3 +813,341 @@ Map<String, Object?> gachaHistoryProgress(List<Map<String, Object?>> batches) {
   );
   return {'pools': result};
 }
+
+bool? _hitTarget(Map<String, Object?> p, String target) {
+  final (kind, rarity) = _classify(p);
+  if (kind == 'item') return false;
+  if (kind == 'unknown') return null;
+  if (target == 'pickup')
+    return p['pickup'] is bool ? p['pickup'] as bool : null;
+  return rarity == 'unknown'
+      ? null
+      : const ['SSR', 'EX', 'BD'].contains(rarity);
+}
+
+final class _HitTimeGroup {
+  final int time;
+  final List<Map<String, Object?>> rows = [];
+  _HitTimeGroup(this.time);
+}
+
+/// Chronological hits per pool across both card kinds (`high` or `pickup`).
+/// Undated draws stay outside positions.
+List<Map<String, Object?>> gachaHistoryHits(
+  List<Map<String, Object?>> batches,
+  String target,
+) {
+  final pools = <String?, List<Map<String, Object?>>>{};
+  for (final batch in batches) {
+    if (batch['prizes'] is! List) {
+      throw const FormatException('gacha_analysis_batch');
+    }
+    final id = batch['poolId'] is String ? batch['poolId'] as String : null;
+    pools.putIfAbsent(id, () => []).add(batch);
+  }
+  final result = <Map<String, Object?>>[];
+  for (final entry in pools.entries) {
+    final groups = <int, _HitTimeGroup>{};
+    var total = 0, undatedDraws = 0, unknownDraws = 0;
+    for (final batch in entry.value) {
+      final prizes = [for (final p in batch['prizes'] as List) _map(p)];
+      total += prizes.length;
+      unknownDraws += prizes.where((p) => _hitTarget(p, target) == null).length;
+      final time = _historyTime(
+        batch['pulledAt'] is String ? batch['pulledAt'] as String : null,
+      );
+      if (time == null) {
+        undatedDraws += prizes.length;
+        continue;
+      }
+      groups.putIfAbsent(time, () => _HitTimeGroup(time)).rows.add(batch);
+    }
+    final hits = <Map<String, Object?>>[];
+    var before = 0;
+    _HitGroup? previous;
+    for (final group
+        in groups.values.toList()..sort((a, b) => a.time.compareTo(b.time))) {
+      final found = [
+        for (final batch in group.rows)
+          for (final raw in batch['prizes'] as List)
+            if (_hitTarget(_map(raw), target) == true) (batch, _map(raw)),
+      ];
+      final size = group.rows.fold<int>(
+        0,
+        (n, batch) => n + (batch['prizes'] as List).length,
+      );
+      final lower = before + 1, upper = before + size, k = found.length;
+      final pulledAt = DateTime.fromMillisecondsSinceEpoch(
+        group.time,
+        isUtc: true,
+      ).toIso8601String();
+      for (final (i, (batch, prize)) in found.indexed) {
+        final since = i > 0
+            ? _interval(0, upper - lower + 1 - k)
+            : previous != null
+            ? _interval(
+                _larger(0, lower - previous.upper - 1),
+                upper - k + 1 - (previous.lower + previous.count - 1) - 1,
+              )
+            : _interval(lower - 1, upper - k);
+        hits.add({
+          'batchId': batch['id'],
+          'pulledAt': pulledAt,
+          'prize': prize,
+          'position': _interval(lower + i, upper - (k - 1 - i)),
+          'since': since,
+        });
+      }
+      if (k > 0) previous = _HitGroup(lower, upper, k);
+      before = upper;
+    }
+    result.add({
+      'poolId': entry.key,
+      'total': total,
+      'undatedDraws': undatedDraws,
+      'unknownDraws': unknownDraws,
+      'hits': hits,
+      'trailing': undatedDraws > 0
+          ? null
+          : previous != null
+          ? _interval(
+              before - previous.upper,
+              before - (previous.lower + previous.count - 1),
+            )
+          : _interval(before, before),
+    });
+  }
+  result.sort(
+    (a, b) => (b['total'] as int).compareTo(a['total'] as int) != 0
+        ? (b['total'] as int).compareTo(a['total'] as int)
+        : _nullableCompare(a['poolId'] as String?, b['poolId'] as String?),
+  );
+  return result;
+}
+
+double _logGamma(double x) {
+  const g = [
+    676.5203681218851,
+    -1259.1392167224028,
+    771.32342877765313,
+    -176.61502916214059,
+    12.507343278686905,
+    -0.13857109526572012,
+    9.9843695780195716e-6,
+    1.5056327351493116e-7,
+  ];
+  if (x < 0.5) {
+    return math.log(math.pi / math.sin(math.pi * x)) - _logGamma(1 - x);
+  }
+  x -= 1;
+  var a = 0.99999999999980993;
+  final t = x + 7.5;
+  for (var i = 0; i < g.length; i++) {
+    a += g[i] / (x + i + 1);
+  }
+  return 0.5 * math.log(2 * math.pi) +
+      (x + 0.5) * math.log(t) -
+      t +
+      math.log(a);
+}
+
+typedef _Window = ({int lo, List<double> probs});
+
+_Window _binomialWindow(int n, double p) {
+  if (p <= 0) return (lo: 0, probs: [1.0]);
+  if (p >= 1) return (lo: n, probs: [1.0]);
+  final mean = n * p, sd = math.sqrt(n * p * (1 - p));
+  final lo = _larger(0, (mean - 12 * sd - 4).floor()),
+      hi = _smaller(n, (mean + 12 * sd + 4).ceil());
+  final mode = _smaller(hi, _larger(lo, ((n + 1) * p).floor()));
+  final probs = List<double>.filled(hi - lo + 1, 0);
+  probs[mode - lo] = math.exp(
+    _logGamma(n + 1.0) -
+        _logGamma(mode + 1.0) -
+        _logGamma(n - mode + 1.0) +
+        mode * math.log(p) +
+        (n - mode) * math.log(1 - p),
+  );
+  final odds = p / (1 - p);
+  for (var k = mode; k < hi; k++) {
+    probs[k + 1 - lo] = probs[k - lo] * ((n - k) / (k + 1)) * odds;
+  }
+  for (var k = mode; k > lo; k--) {
+    probs[k - 1 - lo] = probs[k - lo] * (k / (n - k + 1)) / odds;
+  }
+  return (lo: lo, probs: probs);
+}
+
+_Window _convolve(_Window a, _Window b, double mean, double sd) {
+  final lo = _larger(a.lo + b.lo, (mean - 12 * sd - 4).floor()),
+      hi = _smaller(
+        a.lo + a.probs.length + b.lo + b.probs.length - 2,
+        (mean + 12 * sd + 4).ceil(),
+      );
+  final probs = List<double>.filled(_larger(1, hi - lo + 1), 0);
+  for (var i = 0; i < a.probs.length; i++) {
+    final x = a.probs[i];
+    if (x < 1e-300) continue;
+    for (var j = 0; j < b.probs.length; j++) {
+      final k = a.lo + i + b.lo + j - lo;
+      if (k >= 0 && k < probs.length) probs[k] += x * b.probs[j];
+    }
+  }
+  return (lo: lo, probs: probs);
+}
+
+/// Where the observed count falls among outcomes of the same draws at
+/// official rates. Each batch contributes its draws at that batch's mean
+/// per-draw rate; batches without expectations are left out.
+Map<String, Object?>? gachaHistoryLuck(
+  List<Map<String, Object?>> batches,
+  String target,
+) {
+  final byRate = <double, int>{};
+  var observed = 0, draws = 0;
+  num expected = 0;
+  for (final batch in batches) {
+    final prizes = [for (final p in batch['prizes'] as List) _map(p)];
+    final n = prizes.length,
+        value = _finiteAmount(_map(batch['expected'])[target]);
+    if (n == 0 || value == null || value > n) continue;
+    final counts = _drawCounts();
+    for (final p in prizes) {
+      final (kind, rarity) = _classify(p);
+      _addDraw(counts, p, kind, rarity);
+    }
+    observed += counts[target]!;
+    expected += value;
+    draws += n;
+    final key = (value / n * 1e12).round() / 1e12;
+    byRate[key] = (byRate[key] ?? 0) + n;
+  }
+  if (draws == 0) return null;
+  _Window distribution = (lo: 0, probs: [1.0]);
+  var mean = 0.0, spread = 0.0;
+  for (final entry
+      in byRate.entries.toList()..sort((a, b) => a.key.compareTo(b.key))) {
+    final p = entry.key, n = entry.value;
+    mean += n * p;
+    spread += n * p * (1 - p);
+    distribution = _convolve(
+      distribution,
+      _binomialWindow(n, p),
+      mean,
+      math.sqrt(spread),
+    );
+  }
+  final total = distribution.probs.fold<double>(0, (s, v) => s + v);
+  var below = 0.0, at = 0.0;
+  for (var i = 0; i < distribution.probs.length; i++) {
+    final k = distribution.lo + i;
+    if (k < observed) {
+      below += distribution.probs[i] / total;
+    } else if (k == observed) {
+      at = distribution.probs[i] / total;
+    }
+  }
+  if (observed < distribution.lo) below = at = 0;
+  return {
+    'observed': observed,
+    'expected': expected,
+    'draws': draws,
+    'percentile': (below + at / 2).clamp(0.0, 1.0),
+    'atLeast': (1 - below).clamp(0.0, 1.0),
+  };
+}
+
+/// Official single-draw probabilities from normalized group and prize weights.
+Map<String, Object?>? gachaPoolRates(Map<String, Object?> pool) {
+  final rates = pool['rates'];
+  if (rates is! List) return null;
+  final rarities = <String, double>{
+    'SSR': 0,
+    'EX': 0,
+    'BD': 0,
+    'SR': 0,
+    'R': 0,
+    'item': 0,
+  };
+  var high = 0.0, memberHigh = 0.0, supportHigh = 0.0, pickup = 0.0;
+  num total = 0;
+  for (final rawGroup in rates) {
+    final group = _map(rawGroup), weight = _finiteAmount(group['rate']);
+    if (weight == null || group['prizes'] is! List) return null;
+    if (weight == 0) continue;
+    final prizes = [for (final p in group['prizes'] as List) _map(p)];
+    final inner = prizes.fold<num>(
+      0,
+      (s, p) => s + (_finiteAmount(p['rate']) ?? 0),
+    );
+    if (!(inner > 0)) return null;
+    total += weight;
+    for (final prize in prizes) {
+      final mass = weight * (_finiteAmount(prize['rate']) ?? 0) / inner;
+      final type = _integerAmount(prize['resourceType']);
+      final kind = type == 2
+          ? 'member'
+          : type == 3
+          ? 'support'
+          : 'item';
+      final rarity = kind == 'item'
+          ? 'item'
+          : _rarityCodes['${_integerAmount(prize['rarity'] ?? group['rarity']) ?? ''}'];
+      if (rarity == null) return null;
+      rarities[rarity] = rarities[rarity]! + mass;
+      if (const ['SSR', 'EX', 'BD'].contains(rarity)) {
+        high += mass;
+        if (kind == 'member') {
+          memberHigh += mass;
+        } else {
+          supportHigh += mass;
+        }
+      }
+      if (prize['pickup'] == true) pickup += mass;
+    }
+  }
+  if (!(total > 0)) return null;
+  return {
+    'high': high / total,
+    'memberHigh': memberHigh / total,
+    'supportHigh': supportHigh / total,
+    'pickup': pickup / total,
+    'rarities': {
+      for (final entry in rarities.entries) entry.key: entry.value / total,
+    },
+  };
+}
+
+/// Calendar months in server time; undated batches are excluded.
+List<Map<String, Object?>> gachaHistoryMonths(
+  List<Map<String, Object?>> batches, [
+  int offsetMinutes = 480,
+]) {
+  final months = <String, _AggregateState>{};
+  for (final batch in batches) {
+    final month = gachaHistoryDay(
+      batch['pulledAt'] is String ? batch['pulledAt'] as String : null,
+      offsetMinutes,
+    )?.substring(0, 7);
+    if (month == null) continue;
+    final state = months.putIfAbsent(month, _AggregateState.new);
+    final prizes = [for (final p in batch['prizes'] as List) _map(p)];
+    final observed = _drawCounts();
+    for (final p in prizes) {
+      final (kind, rarity) = _classify(p);
+      _addDraw(state.counts, p, kind, rarity);
+      _addDraw(observed, p, kind, rarity);
+    }
+    _addBatch(state, batch, prizes.length, observed);
+  }
+  return [
+    for (final entry
+        in months.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))
+      {
+        'month': entry.key,
+        ...entry.value.counts,
+        'batches': entry.value.batches,
+        'cost': entry.value.cost,
+      },
+  ];
+}

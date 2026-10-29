@@ -7,7 +7,7 @@
 | Public import             | `@haneoka/game-data-exporter/gacha-history` | `package:game_data_exporter/gacha_history.dart` |
 | Parse and project JSON    | `parseHistory(value)`                       | `HistorySnapshot.fromJson(value)`               |
 | Merge collected snapshots | `mergeHistory(newer, older)`                | `newer.withOlder(older)`                        |
-| Preserve history kinds    | `mergeHistoryCollection(stored, incoming)`  | `mergeHistoryCollection(stored, incoming)`       |
+| Preserve history kinds    | `mergeHistoryCollection(stored, incoming)`  | `mergeHistoryCollection(stored, incoming)`      |
 | Region date offset        | `historyOffsetMinutes(server)`              | `historyOffsetMinutes(server)`                  |
 | Export selected batches   | Host selects `batches`                      | `snapshot.selected(indexes)`                    |
 | Serialize                 | `JSON.stringify(snapshot)`                  | `jsonEncode(snapshot.toJson())`                 |
@@ -45,6 +45,8 @@ Use `mergeHistoryCollection` to retain each kind as a separate snapshot. Date gr
 ## Shared analysis and exchange progress
 
 `gacha-history-analysis` exports `analyzeGachaHistory`, `gachaHistoryExpectation`, `gachaHistoryProgress`, `gachaHistoryDay` and `summarizeGachaHistoryMoney` in both languages. Each prize represents one draw; its resource quantity is counted separately. Expectations use the executed product's normal and guaranteed draws. Position, gap and trailing-miss metrics preserve ranges for unordered batches. Free and paid gem unit prices remain independent.
+
+`gachaHistoryHits` lists each pool's high-rarity or UP draws in time order with the draw range since the previous hit and the draws after the latest one. `gachaHistoryLuck` places an observed count among outcomes of the same draws at the batches' expected rates and returns the mid-percentile and the probability of at least that count. `gachaPoolRates` gives a pool's official single-draw probabilities by rarity, SSR+ per card kind and UP. `gachaHistoryMonths` aggregates counts and costs by server-time month.
 
 `gacha-history-points` exports `projectHistoryAccountState`, `parseHistoryAccountState` and `gachaTargetProgress`. The projection reads only `_gachaRecords` balances and `_exchange` counters. Progress uses the target's published point price and the selected product's point gain; available draw history does not stand in for a saved balance. Missing balances and counters stay null. Lifetime redemption totals require matching NoReset counters; periodic counters retain their reset scope. Stepped prices remain uncomputed until their rule is supported.
 

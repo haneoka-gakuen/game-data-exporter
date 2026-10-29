@@ -773,3 +773,289 @@ export function gachaHistoryProgress(batches: Iterable<GachaAnalysisBatch>): Gac
       .sort((a, b) => b.total - a.total || nullableCompare(a.poolId, b.poolId)),
   };
 }
+
+export type GachaHitTarget = "high" | "pickup";
+export interface GachaHit {
+  batchId: string;
+  pulledAt: string;
+  prize: GachaAnalysisPrize;
+  /** One-based draw number in the pool; draws inside one timestamp are unordered. */
+  position: GachaDrawInterval;
+  /** Draws without the target before this hit, since the previous hit or the first draw. */
+  since: GachaDrawInterval;
+}
+export interface GachaPoolHits {
+  poolId: string | null;
+  total: number;
+  undatedDraws: number;
+  unknownDraws: number;
+  hits: GachaHit[];
+  /** Draws without the target after the latest hit. */
+  trailing: GachaDrawInterval | null;
+}
+
+function hitTarget(p: GachaAnalysisPrize, target: GachaHitTarget): boolean | null {
+  const { kind, rarity } = classify(p);
+  if (kind === "item") return false;
+  if (kind === "unknown") return null;
+  if (target === "pickup") return typeof p.pickup === "boolean" ? p.pickup : null;
+  return rarity === "unknown" ? null : rarity === "SSR" || rarity === "EX" || rarity === "BD";
+}
+
+/** Chronological hits per pool across both card kinds. Undated draws stay outside positions. */
+export function gachaHistoryHits(batches: Iterable<GachaAnalysisBatch>, target: GachaHitTarget): GachaPoolHits[] {
+  const pools = new Map<string | null, GachaAnalysisBatch[]>();
+  for (const batch of batches) {
+    if (!Array.isArray(batch.prizes)) throw new TypeError("gacha_analysis_batch");
+    const rows = pools.get(batch.poolId ?? null) ?? [];
+    rows.push(batch);
+    pools.set(batch.poolId ?? null, rows);
+  }
+  return [...pools]
+    .map(([poolId, rows]): GachaPoolHits => {
+      const groups = new Map<number, { time: number; pulledAt: string; rows: GachaAnalysisBatch[] }>();
+      let total = 0,
+        undatedDraws = 0,
+        unknownDraws = 0;
+      for (const batch of rows) {
+        total += batch.prizes.length;
+        for (const p of batch.prizes) if (hitTarget(p, target) === null) unknownDraws++;
+        const time = historyTime(batch.pulledAt);
+        if (time === null) {
+          undatedDraws += batch.prizes.length;
+          continue;
+        }
+        const group = groups.get(time) ?? { time, pulledAt: new Date(time).toISOString(), rows: [] };
+        group.rows.push(batch);
+        groups.set(time, group);
+      }
+      const hits: GachaHit[] = [];
+      let before = 0,
+        previous: HitGroup | null = null;
+      for (const group of [...groups.values()].sort((a, b) => a.time - b.time)) {
+        const found = group.rows.flatMap((batch) =>
+          batch.prizes.filter((p) => hitTarget(p, target) === true).map((prize) => ({ batch, prize })),
+        );
+        const size = group.rows.reduce((n, batch) => n + batch.prizes.length, 0);
+        const lower = before + 1,
+          upper = before + size,
+          k = found.length;
+        found.forEach(({ batch, prize }, i) => {
+          const since =
+            i > 0
+              ? { min: 0, max: upper - lower + 1 - k }
+              : previous
+                ? {
+                    min: Math.max(0, lower - previous.upper - 1),
+                    max: upper - k + 1 - (previous.lower + previous.count - 1) - 1,
+                  }
+                : { min: lower - 1, max: upper - k };
+          hits.push({
+            batchId: batch.id,
+            pulledAt: group.pulledAt,
+            prize,
+            position: { min: lower + i, max: upper - (k - 1 - i) },
+            since,
+          });
+        });
+        if (k) previous = { lower, upper, count: k };
+        before = upper;
+      }
+      return {
+        poolId,
+        total,
+        undatedDraws,
+        unknownDraws,
+        hits,
+        trailing: undatedDraws
+          ? null
+          : previous
+            ? { min: before - previous.upper, max: before - (previous.lower + previous.count - 1) }
+            : { min: before, max: before },
+      };
+    })
+    .sort((a, b) => b.total - a.total || nullableCompare(a.poolId, b.poolId));
+}
+
+export interface GachaLuck {
+  observed: number;
+  expected: number;
+  draws: number;
+  /** P(X < observed) + P(X = observed) / 2 under the official rates, from 0 to 1. */
+  percentile: number;
+  /** P(X >= observed). */
+  atLeast: number;
+}
+
+function logGamma(x: number): number {
+  const g = [
+    676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+  ];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - logGamma(1 - x);
+  x -= 1;
+  let a = 0.99999999999980993;
+  const t = x + 7.5;
+  for (let i = 0; i < g.length; i++) a += g[i]! / (x + i + 1);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+type Window = { lo: number; probs: number[] };
+function binomialWindow(n: number, p: number): Window {
+  if (p <= 0) return { lo: 0, probs: [1] };
+  if (p >= 1) return { lo: n, probs: [1] };
+  const mean = n * p,
+    sd = Math.sqrt(n * p * (1 - p));
+  const lo = Math.max(0, Math.floor(mean - 12 * sd - 4)),
+    hi = Math.min(n, Math.ceil(mean + 12 * sd + 4));
+  const mode = Math.min(hi, Math.max(lo, Math.floor((n + 1) * p)));
+  const probs = new Array<number>(hi - lo + 1).fill(0);
+  probs[mode - lo] = Math.exp(
+    logGamma(n + 1) - logGamma(mode + 1) - logGamma(n - mode + 1) + mode * Math.log(p) + (n - mode) * Math.log(1 - p),
+  );
+  const odds = p / (1 - p);
+  for (let k = mode; k < hi; k++) probs[k + 1 - lo] = probs[k - lo]! * ((n - k) / (k + 1)) * odds;
+  for (let k = mode; k > lo; k--) probs[k - 1 - lo] = (probs[k - lo]! * (k / (n - k + 1))) / odds;
+  return { lo, probs };
+}
+function convolve(a: Window, b: Window, mean: number, sd: number): Window {
+  const lo = Math.max(a.lo + b.lo, Math.floor(mean - 12 * sd - 4)),
+    hi = Math.min(a.lo + a.probs.length + b.lo + b.probs.length - 2, Math.ceil(mean + 12 * sd + 4));
+  const probs = new Array<number>(Math.max(1, hi - lo + 1)).fill(0);
+  for (let i = 0; i < a.probs.length; i++) {
+    const x = a.probs[i]!;
+    if (x < 1e-300) continue;
+    for (let j = 0; j < b.probs.length; j++) {
+      const k = a.lo + i + b.lo + j - lo;
+      if (k >= 0 && k < probs.length) probs[k] += x * b.probs[j]!;
+    }
+  }
+  return { lo, probs };
+}
+
+/**
+ * Where the observed count falls among outcomes of the same draws at official rates.
+ * Each batch contributes its draws at that batch's mean per-draw rate; batches without
+ * expectations are left out.
+ */
+export function gachaHistoryLuck(
+  batches: Iterable<GachaAnalysisBatch>,
+  target: keyof GachaExpectedCounts,
+): GachaLuck | null {
+  const byRate = new Map<number, number>();
+  let observed = 0,
+    expected = 0,
+    draws = 0;
+  for (const batch of batches) {
+    const n = batch.prizes.length,
+      value = finiteAmount(batch.expected?.[target]);
+    if (!n || value === null || value > n) continue;
+    const counts = drawCounts();
+    for (const p of batch.prizes) {
+      const { kind, rarity } = classify(p);
+      addDraw(counts, p, kind, rarity);
+    }
+    observed += counts[target];
+    expected += value;
+    draws += n;
+    const p = value / n;
+    const key = Math.round(p * 1e12) / 1e12;
+    byRate.set(key, (byRate.get(key) ?? 0) + n);
+  }
+  if (!draws) return null;
+  let distribution: Window = { lo: 0, probs: [1] },
+    mean = 0,
+    spread = 0;
+  for (const [p, n] of [...byRate].sort((a, b) => a[0] - b[0])) {
+    mean += n * p;
+    spread += n * p * (1 - p);
+    distribution = convolve(distribution, binomialWindow(n, p), mean, Math.sqrt(spread));
+  }
+  const total = distribution.probs.reduce((s, v) => s + v, 0);
+  let below = 0,
+    at = 0;
+  distribution.probs.forEach((value, i) => {
+    const k = distribution.lo + i;
+    if (k < observed) below += value / total;
+    else if (k === observed) at = value / total;
+  });
+  if (observed < distribution.lo) below = at = 0;
+  const percentile = Math.min(1, Math.max(0, below + at / 2));
+  return { observed, expected, draws, percentile, atLeast: Math.min(1, Math.max(0, 1 - below)) };
+}
+
+export interface GachaPoolRates {
+  high: number;
+  memberHigh: number;
+  supportHigh: number;
+  pickup: number;
+  rarities: Record<"SSR" | "EX" | "BD" | "SR" | "R" | "item", number>;
+}
+
+/** Official single-draw probabilities from normalized group and prize weights. */
+export function gachaPoolRates(pool: Readonly<Record<string, unknown>>): GachaPoolRates | null {
+  if (!Array.isArray(pool.rates)) return null;
+  const result: GachaPoolRates = {
+    high: 0,
+    memberHigh: 0,
+    supportHigh: 0,
+    pickup: 0,
+    rarities: { SSR: 0, EX: 0, BD: 0, SR: 0, R: 0, item: 0 },
+  };
+  let total = 0;
+  for (const rawGroup of pool.rates) {
+    const group = historyRecord(rawGroup),
+      weight = finiteAmount(group.rate);
+    if (weight === null || !Array.isArray(group.prizes)) return null;
+    if (!weight) continue;
+    const prizes = group.prizes.map(historyRecord);
+    const inner = prizes.reduce((s, p) => s + (finiteAmount(p.rate) ?? 0), 0);
+    if (!(inner > 0)) return null;
+    total += weight;
+    for (const prize of prizes) {
+      const mass = (weight * (finiteAmount(prize.rate) ?? 0)) / inner,
+        type = integerAmount(prize.resourceType);
+      const kind = type === 2 ? "member" : type === 3 ? "support" : "item";
+      const rarity = kind === "item" ? "item" : RARITY_CODES[String(integerAmount(prize.rarity ?? group.rarity) ?? "")];
+      if (!rarity) return null;
+      result.rarities[rarity as keyof GachaPoolRates["rarities"]] += mass;
+      if (rarity === "SSR" || rarity === "EX" || rarity === "BD") {
+        result.high += mass;
+        result[kind === "member" ? "memberHigh" : "supportHigh"] += mass;
+      }
+      if (prize.pickup === true) result.pickup += mass;
+    }
+  }
+  if (!(total > 0)) return null;
+  for (const key of ["high", "memberHigh", "supportHigh", "pickup"] as const) result[key] /= total;
+  for (const key of Object.keys(result.rarities) as (keyof GachaPoolRates["rarities"])[]) result.rarities[key] /= total;
+  return result;
+}
+const historyRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+
+export interface GachaMonthAnalysis extends GachaDrawCounts {
+  month: string;
+  batches: number;
+  cost: GachaCostSummary;
+}
+
+/** Calendar months in server time; undated batches are excluded. */
+export function gachaHistoryMonths(batches: Iterable<GachaAnalysisBatch>, offsetMinutes = 480): GachaMonthAnalysis[] {
+  const months = new Map<string, AggregateState>();
+  for (const batch of batches) {
+    const month = gachaHistoryDay(batch.pulledAt, offsetMinutes)?.slice(0, 7);
+    if (!month) continue;
+    const state = months.get(month) ?? aggregateState();
+    months.set(month, state);
+    const observed = drawCounts();
+    for (const p of batch.prizes) {
+      const { kind, rarity } = classify(p);
+      addDraw(state.counts, p, kind, rarity);
+      addDraw(observed, p, kind, rarity);
+    }
+    addBatch(state, batch, observed);
+  }
+  return [...months]
+    .sort((a, b) => compare(a[0], b[0]))
+    .map(([month, state]) => ({ month, ...state.counts, batches: state.batches, cost: state.cost }));
+}
