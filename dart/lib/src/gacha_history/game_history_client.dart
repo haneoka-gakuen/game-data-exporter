@@ -76,6 +76,9 @@ class _HistoryRpc extends Client {
 }
 
 class GameHistoryClient {
+  GameHistoryClient({this.proxyFor});
+
+  final Uri? Function(Uri destination)? proxyFor;
   static final _versions = <GameHistoryRegion, String>{};
   static final _versionPattern = RegExp(r'^\d+(?:\.\d+){1,4}$');
 
@@ -83,45 +86,78 @@ class GameHistoryClient {
     SavedGameSession session,
     GameHistoryRegion region,
   ) async {
+    final proxy = proxyFor?.call(Uri.https(region.host));
     final channel = ClientChannel(
       region.host,
-      options: const ChannelOptions(connectTimeout: Duration(seconds: 15)),
+      options: ChannelOptions(
+        credentials: ChannelCredentials.secure(authority: region.host),
+        connectTimeout: const Duration(seconds: 15),
+        proxy: proxy == null ? null : Proxy(host: proxy.host, port: proxy.port),
+      ),
     );
     final rpc = _HistoryRpc(channel);
-    CallOptions options(String version, {bool authenticated = false}) =>
-        CallOptions(
-          metadata: {
-            if (region == GameHistoryRegion.jp)
-              'x-platform': Platform.isIOS ? 'iOS' : 'Android',
-            'x-client-version': version,
-            if (authenticated) ...session._metadata(),
-          },
-          timeout: const Duration(seconds: 25),
-        );
+    CallOptions options(
+      String version, {
+      bool authenticated = false,
+      Duration timeout = const Duration(seconds: 25),
+    }) => CallOptions(
+      metadata: {
+        if (region == GameHistoryRegion.jp)
+          'x-platform': Platform.isIOS ? 'iOS' : 'Android',
+        'x-client-version': version,
+        if (authenticated) ...session._metadata(),
+      },
+      timeout: timeout,
+    );
     Future<String> discover() async {
       final method = region == GameHistoryRegion.jp
           ? 'app.announcement.AnnouncementService/GetList'
           : 'app.masterdata.MasterdataService/Version';
-      final call = rpc.call(method, options('0.0.0'));
-      final headers = call.headers.catchError((Object _) => <String, String>{});
-      Map<String, String> trailers = const {};
-      try {
-        await call;
-        trailers = await call.trailers;
-      } on GrpcError catch (error) {
-        trailers = error.trailers ?? const {};
-        if (error.code == StatusCode.permissionDenied) {
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final call = rpc.call(
+          method,
+          options('0.0.0', timeout: const Duration(seconds: 10)),
+        );
+        final headers = call.headers.catchError(
+          (Object _) => <String, String>{},
+        );
+        final trailers = call.trailers.catchError(
+          (Object _) => <String, String>{},
+        );
+        GrpcError? failure;
+        try {
+          await call;
+        } on GrpcError catch (error) {
+          failure = error;
+        }
+        if (failure?.code == StatusCode.permissionDenied ||
+            failure?.code == StatusCode.unauthenticated ||
+            failure?.message == 'authentication failed') {
           throw const GameHistoryException('history_service_unavailable');
         }
-      }
-      final metadata = {...await headers, ...trailers};
-      final version = metadata['x-client-recommended-version'];
-      if (version == null ||
-          version.length > 32 ||
-          !_versionPattern.hasMatch(version)) {
+        final metadata = {
+          ...await headers,
+          ...await trailers,
+          ...?failure?.trailers,
+        };
+        final version = metadata['x-client-recommended-version'];
+        if (version != null &&
+            version.length <= 32 &&
+            _versionPattern.hasMatch(version)) {
+          return _versions[region] = version;
+        }
+        if (attempt == 0 && failure?.code == StatusCode.unavailable) continue;
+        if (failure?.code == StatusCode.unavailable ||
+            failure?.code == StatusCode.deadlineExceeded ||
+            failure?.code == StatusCode.cancelled) {
+          throw const GameHistoryException('history_network_error');
+        }
+        if (failure?.code == StatusCode.dataLoss) {
+          throw const GameHistoryException('history_response_invalid');
+        }
         throw const GameHistoryException('history_version_unavailable');
       }
-      return _versions[region] = version;
+      throw const GameHistoryException('history_version_unavailable');
     }
 
     try {

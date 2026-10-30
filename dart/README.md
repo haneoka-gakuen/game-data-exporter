@@ -27,6 +27,8 @@ await File(outputPath).writeAsString(jsonEncode(history.toJson()));
 
 `HistorySnapshot.fromJson`, `withOlder` and `selected` implement the [shared history contract](../docs/gacha-history.md). `decodeHistoryResponse` projects the bounded protobuf response into that contract. The native reader uses TLS gRPC, public recommended-version discovery, and an authenticated history request. JP discovery uses `app.announcement.AnnouncementService/GetList` with `x-platform`; Global uses `app.masterdata.MasterdataService/Version`.
 
+Native hosts can pass `GameHistoryClient(proxyFor: ...)` to select their configured HTTP proxy for the game origin. TLS continues to verify the game host. Version discovery retains response headers and trailers, retries one unavailable connection, and reports transport failures separately from a missing recommended-version header.
+
 ## Inventory projection
 
 `projectThirdPartyInventory` projects Otonote personal growth/inventory JSON and
