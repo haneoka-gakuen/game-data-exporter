@@ -1,4 +1,5 @@
 import { projectInventoryDocument } from "./profile.js";
+import { captureDocument, isCapture } from "./capture.js";
 import { isEncryptedBox, decryptBox } from "./crypt.js";
 import { losslessJson, decompress, zipEntries, readZipEntry } from "./formats.js";
 import {
@@ -141,6 +142,10 @@ async function parseBytes(data: Uint8Array, options: BoxParseOptions): Promise<B
   const prefix = new TextDecoder().decode(data.subarray(0, 64)).trimStart();
   if (!prefix.startsWith("{") && !prefix.startsWith("ONPKG1:")) return null;
   if (prefix.startsWith("ONPKG1:")) return (await parseBoxText(utf8(data), options)).candidates[0]!;
+  if (/^\{\s*"log"\s*:/.test(prefix)) {
+    const root = JSON.parse(utf8(data)) as Record<string, unknown>;
+    if (isCapture(root)) return project(await captureDocument(root, options.signal), "player-json");
+  }
   return project(losslessJson(utf8(data)), "player-json");
 }
 export async function parseBoxFiles(files: readonly Blob[], options: BoxParseOptions = {}): Promise<BoxParseResult> {
@@ -187,7 +192,9 @@ export async function parseBoxFiles(files: readonly Blob[], options: BoxParseOpt
           }
         }
       } else {
-        if (bytes.length > BOX_LIMITS.fileBytes) throw new BoxImportError("box_file_budget");
+        const capture = /^\{\s*"log"\s*:/.test(new TextDecoder().decode(bytes.subarray(0, 64)).trimStart());
+        if (bytes.length > (capture ? BOX_LIMITS.inputBytes : BOX_LIMITS.fileBytes))
+          throw new BoxImportError("box_file_budget");
         await accept(bytes);
       }
       options.progress?.(++completed, files.length);
