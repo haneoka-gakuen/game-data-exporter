@@ -4,5 +4,6 @@ library;
 export 'save_codec.dart';
 export 'src/gacha_history/game_history_client.dart';
 export 'src/gacha_history/history_snapshot.dart';
+export 'src/player/player_data.dart';
 export 'gacha_history_analysis.dart';
 export 'gacha_history_points.dart';

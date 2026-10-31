@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:grpc/grpc.dart';
 import 'package:protobuf/protobuf.dart' show InvalidProtocolBufferException;
 
+import '../player/player_data.dart';
 import 'history_snapshot.dart';
 
 enum GameHistoryRegion {
@@ -82,9 +83,35 @@ class GameHistoryClient {
   static final _versions = <GameHistoryRegion, String>{};
   static final _versionPattern = RegExp(r'^\d+(?:\.\d+){1,4}$');
 
+  /// The account's gacha history.
   Future<HistorySnapshot> read(
     SavedGameSession session,
     GameHistoryRegion region,
+  ) => _authenticated(
+    session,
+    region,
+    'app.gacha.GachaService/History',
+    (bytes, version) =>
+        decodeHistoryResponse(bytes, server: region.id, clientVersion: version),
+  );
+
+  /// The account's card, character and band item progress, keyed as the
+  /// save's `_player`.
+  Future<Map<String, List<Map<String, Object?>>>> readPlayerData(
+    SavedGameSession session,
+    GameHistoryRegion region,
+  ) => _authenticated(
+    session,
+    region,
+    'app.player.PlayerService/GetPlayerData',
+    (bytes, _) => decodePlayerData(bytes),
+  );
+
+  Future<T> _authenticated<T>(
+    SavedGameSession session,
+    GameHistoryRegion region,
+    String method,
+    T Function(Uint8List bytes, String version) decode,
   ) async {
     final proxy = proxyFor?.call(Uri.https(region.host));
     final channel = ClientChannel(
@@ -165,14 +192,10 @@ class GameHistoryClient {
       for (var attempt = 0; attempt < 2; attempt++) {
         try {
           final bytes = await rpc.call(
-            'app.gacha.GachaService/History',
+            method,
             options(version, authenticated: true),
           );
-          return decodeHistoryResponse(
-            bytes,
-            server: region.id,
-            clientVersion: version,
-          );
+          return decode(bytes, version);
         } on GrpcError catch (error) {
           if (attempt == 0 && error.message == 'client update required') {
             _versions.remove(region);
@@ -196,6 +219,8 @@ class GameHistoryClient {
     } on FormatException {
       throw const GameHistoryException('history_response_invalid');
     } on InvalidProtocolBufferException {
+      throw const GameHistoryException('history_response_invalid');
+    } on PlayerDataFormatException {
       throw const GameHistoryException('history_response_invalid');
     } on GrpcError catch (error) {
       throw GameHistoryException(

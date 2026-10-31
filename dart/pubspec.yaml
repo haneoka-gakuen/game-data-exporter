@@ -9,3 +9,5 @@ dependencies:
   protobuf: ^6.1.0
 executables:
   gacha_history: gacha_history
+dev_dependencies:
+  test: ^1.33.0
