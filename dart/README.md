@@ -9,7 +9,7 @@ dart pub get
 dart run game_data_exporter:gacha_history --server jp --output history.json /path/to/persist-save
 ```
 
-`--server` accepts `jp`, `global-hmt`, `global-en` and `global-kr`. The input is one original encrypted `LocalPersistData` file or its decrypted JSON document, bounded to 16 MiB. The command reads `_certification` directly, so an accompanying player-profile file is optional. It uses the same `GameHistoryClient` as native applications and writes a credential-free history snapshot. `--help` describes the command. Errors print a short code and return a nonzero exit status.
+`--server` accepts `jp`, `global-hmt`, `global-en` and `global-kr`. The input is one `LocalPersistData` file, encrypted or decrypted, up to 16 MiB. The output is a history snapshot without credentials. Errors print a short code and exit nonzero.
 
 ```dart
 import 'dart:convert';
@@ -23,20 +23,17 @@ final history = await GameHistoryClient().read(session, GameHistoryRegion.jp);
 await File(outputPath).writeAsString(jsonEncode(history.toJson()));
 ```
 
-`SavedGameSession.fromCertification` also accepts an already-decoded `_certification` map. Session fields are private and have no JSON serializer. `SaveCodec` is separately available from `package:game_data_exporter/save_codec.dart` for local-save import. File selection and account association belong to the host application.
+`SavedGameSession.fromCertification` accepts an already decoded `_certification` map. Session fields are private and never serialised. `SaveCodec` (`package:game_data_exporter/save_codec.dart`) decodes local saves on its own.
 
-`HistorySnapshot.fromJson`, `withOlder` and `selected` implement the [shared history contract](../docs/gacha-history.md). `decodeHistoryResponse` projects the bounded protobuf response into that contract. The native reader uses TLS gRPC, public recommended-version discovery, and an authenticated history request. JP discovery uses `app.announcement.AnnouncementService/GetList` with `x-platform`; Global uses `app.masterdata.MasterdataService/Version`.
+`HistorySnapshot.fromJson`, `withOlder` and `selected` implement the [shared history contract](../docs/gacha-history.md). `GameHistoryClient.readPlayerData` reads the account's card, character and band item progress in the same `_player` shape as a local save.
 
-Native hosts can pass `GameHistoryClient(proxyFor: ...)` to select their configured HTTP proxy for the game origin. TLS continues to verify the game host. Version discovery retains response headers and trailers, retries one unavailable connection, and reports transport failures separately from a missing recommended-version header.
+Pass `GameHistoryClient(proxyFor: ...)` to route game requests through the host's HTTP proxy.
 
 ## Inventory projection
 
-`projectThirdPartyInventory` projects Otonote personal growth/inventory JSON and
-MoeNotes card-box JSON into the same current-fact candidate used by the TypeScript
-exporter. It accepts a decoded JSON map and returns an `InventoryCandidate`, or
-`null` for another format. `InventoryImportError.code` uses the exporter's error
-codes. `toJson()` emits the candidate DTO; the receiving application assigns its
-own candidate ID.
+`projectThirdPartyInventory` reads a decoded OtoNote or MoeNotes JSON map into the
+same `InventoryCandidate` the TypeScript exporter produces, or returns `null` for
+another format. Errors carry the exporter's codes in `InventoryImportError.code`.
 
 The inventory projection accepts decoded JSON. File selection, archive decoding,
 release-specific range checks, preview, confirmation and persistence belong to

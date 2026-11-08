@@ -32,7 +32,7 @@ npx @haneoka/game-data-exporter save.dat backup.zip -o box.txt
 
 Each player found becomes one line of the output. `--json` prints the parsed result instead of packages.
 
-OtoNote personal-growth and MoeNotes card-box JSON files can be imported directly in Haneoka. Their confirmed growth values enter the existing review; unresolved fields remain notices. A MoeNotes box linked to a game save requires that save. Use the original profile JSON for import and `--json` to inspect its parsed facts.
+OtoNote personal-growth and MoeNotes card-box JSON files are read as well. A MoeNotes box linked to a game save needs that save alongside it.
 
 Then open the team builder, choose **Import** and paste the contents of `box.txt`.
 
@@ -45,7 +45,7 @@ const { candidates } = await parseBoxFiles([file]);
 const text = encodeOnpkg(candidates[0]);
 ```
 
-`parseBoxFiles` takes `Blob`s and runs in browsers, workers and Node 20 or later. `readAndroidFiles` scans one game's folder through any `DeviceReader`; two come with the package:
+`parseBoxFiles` takes `Blob`s and runs in browsers, workers and Node 20 or later. `readSaveDocuments` from `@haneoka/game-data-exporter/save-document` decodes the same inputs to whole JSON documents, for hosts that show more than card progress. `readAndroidFiles` scans one game's folder through any `DeviceReader`; two come with the package:
 
 - `@haneoka/game-data-exporter/adb` — the `adb` command, for Node.
 - `@haneoka/game-data-exporter/webusb` — WebUSB in Chromium browsers, through [Tango](https://github.com/yume-chan/ya-webadb). Install `@yume-chan/adb` and `@yume-chan/adb-daemon-webusb` alongside it.
@@ -61,11 +61,11 @@ dart pub get
 dart run game_data_exporter:gacha_history --server global-hmt --output history.json /path/to/persist-save
 ```
 
-Choose `jp`, `global-hmt`, `global-en` or `global-kr`. This command contacts the game server, discovers its recommended client version and requests history. It writes the credential-free `haneoka-gacha-history-v1` snapshot used by the Web importer. Session fields stay in memory; errors print short codes. Server retention and ordering within a batch remain unspecified.
+Choose `jp`, `global-hmt`, `global-en` or `global-kr`. The command asks the game server for the history and writes a `haneoka-gacha-history-v1` snapshot without credentials, which Haneoka's gacha history page imports.
 
 Portable JSON types, parsing and multiset merging are shared through `@haneoka/game-data-exporter/gacha-history` and `package:game_data_exporter/gacha_history.dart`. See the [shared history contract](docs/gacha-history.md) and [Dart API](dart/README.md).
 
-`gacha-history-analysis` provides counts, rarity and UP distributions, product-specific expectations, official pool rates, luck percentiles, hit timelines, monthly totals, costs and unordered draw intervals. `gacha-history-points` projects saved balances and redemption counters and joins them to the published exchange rules. Both modules have TypeScript and Dart entry points and work without a renderer. A host can include this credential-free account state in a portable snapshot.
+`gacha-history-analysis` computes counts, rarity and rate-up distributions, pool rates, luck percentiles, hit timelines, monthly totals and costs. `gacha-history-points` turns saved balances and redemption counters into exchange progress. Both have TypeScript and Dart entry points.
 
 ## The package format
 
