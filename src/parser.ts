@@ -25,6 +25,8 @@ function project(value: unknown, format: BoxCandidate["format"]): BoxCandidate |
   if (!root) return null;
   const compatible = projectInventoryDocument(root);
   if (compatible) return compatible;
+  const snapshot = root.schema === "haneoka-game-save-v1";
+  if (snapshot && root.server !== "jp" && root.server !== "intl") throw new BoxImportError("box_invalid_json");
   const compact = integer(root.v) === 1 && (Array.isArray(root.m) || Array.isArray(root.s));
   const player = compact ? root : object(root._player) || object(root.player) || root;
   if (!compact && !Array.isArray(player._memberCards) && !Array.isArray(player._supportCards)) return null;
@@ -78,7 +80,15 @@ function project(value: unknown, format: BoxCandidate["format"]): BoxCandidate |
     if (id !== null) bandItems.push({ id, level: integer(row._level) });
   }
   // No _name/_accountid/password/token/player id/duplicate counts survive this boundary.
-  return { id: crypto.randomUUID(), format: compact ? "onpkg1" : format, members, snapshots, characters, bandItems };
+  return {
+    id: crypto.randomUUID(),
+    format: compact ? "onpkg1" : format,
+    members,
+    snapshots,
+    characters,
+    bandItems,
+    ...(snapshot ? { declaredIdentity: { server: root.server as string } } : {}),
+  };
 }
 const utf8 = (data: Uint8Array) => {
   try {
